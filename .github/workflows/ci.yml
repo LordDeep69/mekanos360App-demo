@@ -16,7 +16,10 @@ jobs:
         with:
           node-version: '18'
       - name: Install dependencies
-        run: npm ci
+        # Use `npm install` when no package-lock.json is committed. If you
+        # prefer reproducible installs, generate and commit package-lock.json
+        # locally and switch back to `npm ci`.
+        run: npm install
       - name: Build
         run: npm run build --if-present
       - name: Run tests
