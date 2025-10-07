@@ -61,6 +61,17 @@ function WorkOrders() {
     getWorkOrdersByStatus
   } = useGlobalStore();
   
+  // DEBUG: Log para verificar órdenes en WorkOrders
+  useEffect(() => {
+    console.log('📋 [WORKORDERS DEBUG] Total de órdenes en workOrders:', workOrders.length);
+    console.log('📋 [WORKORDERS DEBUG] Estados:', 
+      workOrders.reduce((acc, wo) => {
+        acc[wo.estado] = (acc[wo.estado] || 0) + 1;
+        return acc;
+      }, {})
+    );
+  }, [workOrders]);
+  
   // Generar columnas del kanban dinámicamente desde el store
   const generateKanbanColumns = () => {
     const planificadas = getWorkOrdersByStatus('PLANIFICADA');
@@ -68,6 +79,14 @@ function WorkOrders() {
     const enRuta = getWorkOrdersByStatus('EN RUTA');
     const ejecutando = getWorkOrdersByStatus('EJECUTANDO');
     const completadas = getWorkOrdersByStatus('COMPLETADA');
+
+    console.log('📋 [WORKORDERS DEBUG] Columnas generadas:', {
+      planificadas: planificadas.length,
+      asignadas: asignadas.length,
+      enRuta: enRuta.length,
+      ejecutando: ejecutando.length,
+      completadas: completadas.length
+    });
 
     return {
       planificada: {

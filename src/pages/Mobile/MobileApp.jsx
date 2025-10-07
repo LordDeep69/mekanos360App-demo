@@ -1,6 +1,8 @@
 
 // src/pages/Mobile/MobileApp.jsx
 import React, { useRef, useState, useEffect } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   Box,
   Paper,
@@ -70,6 +72,308 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import SignatureCanvas from 'react-signature-canvas';
+
+// Utilidad para convertir imagen a base64
+function getImageBase64(url) {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = 'Anonymous';
+    img.onload = function () {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL('image/jpeg'));
+    };
+    img.onerror = function (err) { reject(err); };
+    img.src = url;
+  });
+}
+
+// Utilidad para obtener URL de imagen (con placeholder si la real no existe)
+// Función helper para convertir archivos a base64
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function getImageUrl(foto, index) {
+  // Si la foto tiene una URL válida (http, https o data:image), usarla directamente
+  if (foto.url && (
+    foto.url.startsWith('http://') || 
+    foto.url.startsWith('https://') || 
+    foto.url.startsWith('data:image')
+  )) {
+    return foto.url;
+  }
+  
+  // Si la URL comienza con /uploads o no existe, usar placeholder de demostración
+  if (!foto.url || foto.url.startsWith('/uploads') || foto.url.startsWith('/')) {
+    // Usar imágenes de demostración de mantenimiento de Unsplash
+    const demoImages = [
+      'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=600&h=400&fit=crop', // Herramientas
+      'https://images.unsplash.com/photo-1504328345606-18bbc8c9d7d1?w=600&h=400&fit=crop', // Equipo industrial
+      'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=600&h=400&fit=crop', // Medición
+      'https://images.unsplash.com/photo-1590856029826-c7a73142bbf1?w=600&h=400&fit=crop', // HVAC
+      'https://images.unsplash.com/photo-1513828583688-c52646db42da?w=600&h=400&fit=crop', // Técnico
+      'https://images.unsplash.com/photo-1581092918056-0c4c3acd3789?w=600&h=400&fit=crop'  // Industrial
+    ];
+    return demoImages[index % demoImages.length];
+  }
+  
+  return foto.url;
+}
+
+// Función para descargar el PDF con imágenes y diseño profesional
+async function handleDownloadPDF(selectedOT) {
+  if (!selectedOT) return;
+  const ot = selectedOT.fullWorkOrder || selectedOT;
+  const doc = new jsPDF('p', 'mm', 'a4');
+  
+  // Colores corporativos
+  const primaryColor = [41, 128, 185]; // Azul
+  const secondaryColor = [52, 73, 94]; // Gris oscuro
+  const accentColor = [46, 204, 113]; // Verde
+  const lightGray = [236, 240, 241];
+  
+  let y = 10;
+  
+  // ========== ENCABEZADO ==========
+  // Rectángulo de fondo para el encabezado
+  doc.setFillColor(...primaryColor);
+  doc.rect(0, 0, 210, 45, 'F');
+  
+  // Logo o título de la empresa
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(24);
+  doc.setFont(undefined, 'bold');
+  doc.text('MEKANOS 360', 15, 20);
+  
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'normal');
+  doc.text('Reporte de Mantenimiento', 15, 28);
+  
+  // ID y fecha en la esquina derecha
+  doc.setFontSize(9);
+  doc.text(`ID: ${ot.id}`, 150, 20);
+  doc.text(`Fecha: ${new Date(ot.fechaFinalizacion || Date.now()).toLocaleDateString('es-ES')}`, 150, 25);
+  doc.text(`Hora: ${new Date(ot.fechaFinalizacion || Date.now()).toLocaleTimeString('es-ES')}`, 150, 30);
+  
+  y = 50;
+  
+  // ========== INFORMACIÓN GENERAL ==========
+  doc.setTextColor(...secondaryColor);
+  doc.setFillColor(...lightGray);
+  doc.rect(10, y, 190, 8, 'F');
+  doc.setFontSize(12);
+  doc.setFont(undefined, 'bold');
+  doc.text('INFORMACIÓN GENERAL', 15, y + 5.5);
+  
+  y += 12;
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'normal');
+  
+  // Tabla de información
+  const infoData = [
+    ['Cliente:', ot.cliente || 'N/A'],
+    ['Activo:', ot.activoNombre || 'N/A'],
+    ['Técnico:', ot.tecnicoAsignado || 'N/A'],
+    ['Tipo de Trabajo:', `${ot.tipo || 'N/A'} - ${ot.subtipo || ''}`],
+    ['Duración:', `${ot.tiempoReal || ot.tiempoEstimado || 'N/A'} horas`],
+    ['Estado:', 'COMPLETADA ✓']
+  ];
+  
+  infoData.forEach(([label, value]) => {
+    doc.setFont(undefined, 'bold');
+    doc.text(label, 15, y);
+    doc.setFont(undefined, 'normal');
+    doc.text(value, 60, y);
+    y += 6;
+  });
+  
+  y += 5;
+  
+  // ========== RESUMEN EJECUTIVO ==========
+  doc.setFillColor(...lightGray);
+  doc.rect(10, y, 190, 8, 'F');
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(12);
+  doc.text('RESUMEN EJECUTIVO', 15, y + 5.5);
+  
+  y += 12;
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'normal');
+  const resumen = ot.resumenEjecutivo || ot.observaciones || 'Trabajo completado satisfactoriamente según checklist programado.';
+  const resumenLines = doc.splitTextToSize(resumen, 180);
+  doc.text(resumenLines, 15, y);
+  y += (resumenLines.length * 5) + 8;
+  
+  // ========== MEDICIONES REALIZADAS ==========
+  if (ot.checklist && ot.checklist.items) {
+    const mediciones = ot.checklist.items.filter(item => item.valor);
+    if (mediciones.length > 0) {
+      if (y > 240) { doc.addPage(); y = 15; }
+      
+      doc.setFillColor(...accentColor);
+      doc.rect(10, y, 190, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(12);
+      doc.text('MEDICIONES REALIZADAS', 15, y + 5.5);
+      
+      y += 12;
+      doc.setTextColor(...secondaryColor);
+      
+      // Tabla de mediciones
+      const tableData = mediciones.map(item => [
+        item.descripcion,
+        item.valor,
+        item.rangoMinimo !== undefined ? `${item.rangoMinimo} - ${item.rangoMaximo} ${item.unidad || ''}` : 'N/A',
+        item.estado || 'OK'
+      ]);
+      
+      autoTable(doc, {
+        startY: y,
+        head: [['Parámetro', 'Valor Medido', 'Rango Normal', 'Estado']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { 
+          fillColor: primaryColor,
+          fontSize: 9,
+          fontStyle: 'bold'
+        },
+        bodyStyles: { 
+          fontSize: 8 
+        },
+        alternateRowStyles: {
+          fillColor: [245, 245, 245]
+        },
+        margin: { left: 15, right: 15 }
+      });
+      
+      y = doc.lastAutoTable.finalY + 10;
+    }
+  }
+  
+  // ========== RECOMENDACIONES ==========
+  if (ot.recomendaciones && ot.recomendaciones.length > 0) {
+    if (y > 240) { doc.addPage(); y = 15; }
+    
+    doc.setFillColor(255, 193, 7); // Amarillo/Naranja
+    doc.rect(10, y, 190, 8, 'F');
+    doc.setTextColor(0, 0, 0);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(12);
+    doc.text('⚠ RECOMENDACIONES', 15, y + 5.5);
+    
+    y += 12;
+    doc.setTextColor(...secondaryColor);
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    
+    ot.recomendaciones.forEach((rec, index) => {
+      if (y > 270) { doc.addPage(); y = 15; }
+      const recLines = doc.splitTextToSize(`${index + 1}. ${rec}`, 175);
+      doc.text(recLines, 15, y);
+      y += (recLines.length * 5) + 3;
+    });
+    
+    y += 5;
+  }
+  
+  // ========== EVIDENCIAS FOTOGRÁFICAS ==========
+  const fotos = (ot.multimedia && ot.multimedia.fotos) ? ot.multimedia.fotos : [];
+  if (fotos.length > 0) {
+    if (y > 230) { doc.addPage(); y = 15; }
+    
+    doc.setFillColor(...primaryColor);
+    doc.rect(10, y, 190, 8, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(12);
+    doc.text('📷 EVIDENCIAS FOTOGRÁFICAS', 15, y + 5.5);
+    
+    y += 15;
+    doc.setTextColor(...secondaryColor);
+    
+    for (let i = 0; i < fotos.length; i++) {
+      const foto = fotos[i];
+      try {
+        const imageUrl = getImageUrl(foto, i);
+        const imgData = await getImageBase64(imageUrl);
+        
+        if (y > 210) { 
+          doc.addPage(); 
+          y = 15; 
+        }
+        
+        // Marco para la imagen
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.5);
+        doc.rect(15, y, 80, 60);
+        
+        // Imagen
+        doc.addImage(imgData, 'JPEG', 16, y + 1, 78, 58);
+        
+        // Descripción al lado
+        doc.setFontSize(9);
+        doc.setFont(undefined, 'bold');
+        doc.text(`Foto ${i + 1}:`, 100, y + 5);
+        doc.setFont(undefined, 'normal');
+        const descLines = doc.splitTextToSize(foto.descripcion || 'Sin descripción', 90);
+        doc.text(descLines, 100, y + 12);
+        
+        // Fecha y tipo
+        if (foto.fecha) {
+          doc.setFontSize(8);
+          doc.setTextColor(100, 100, 100);
+          doc.text(`Fecha: ${new Date(foto.fecha).toLocaleString('es-ES')}`, 100, y + 25);
+        }
+        if (foto.tipo) {
+          doc.setFontSize(8);
+          const tipoColors = {
+            'antes': [231, 76, 60],
+            'proceso': [241, 196, 15],
+            'despues': [46, 204, 113],
+            'correccion': [230, 126, 34]
+          };
+          doc.setTextColor(...(tipoColors[foto.tipo] || [52, 73, 94]));
+          doc.text(`Tipo: ${foto.tipo.toUpperCase()}`, 100, y + 30);
+          doc.setTextColor(...secondaryColor);
+        }
+        
+        y += 68;
+        
+      } catch (e) {
+        doc.setFontSize(9);
+        doc.text(`📷 ${foto.descripcion || `Foto ${i + 1}`} (No disponible)`, 15, y);
+        y += 8;
+      }
+    }
+  }
+  
+  // ========== PIE DE PÁGINA ==========
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(
+      `Página ${i} de ${pageCount} | Generado el ${new Date().toLocaleString('es-ES')} | MEKANOS 360 - Sistema de Gestión de Mantenimiento`,
+      105,
+      290,
+      { align: 'center' }
+    );
+  }
+  
+  doc.save(`Reporte_${ot.id || 'mantenimiento'}_${new Date().getTime()}.pdf`);
+}
+
 import useGlobalStore from '../../store/globalStore';
 
 function MobileApp() {
@@ -97,17 +401,24 @@ function MobileApp() {
   const [checklistStep, setChecklistStep] = useState(0);
   const [checklistData, setChecklistData] = useState([]);
   const [photosTaken, setPhotosTaken] = useState(0);
+  const [uploadedPhotos, setUploadedPhotos] = useState([]); // NUEVO: almacenar fotos reales
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [clientSignature, setClientSignature] = useState(null);
   const [showSummary, setShowSummary] = useState(false);
   const [viewMode, setViewMode] = useState('pending'); // 'pending' o 'completed'
   const sigRef = useRef(null);
 
-  // Usar fecha actual real o fecha de las OTs existentes
-  const today = '2025-01-21'; // Fecha que coincide con tus OTs mock
-  // const today = new Date().toISOString().split('T')[0]; // Para usar fecha actual real
+  // Usar fecha actual real
+  // const today = '2025-01-21'; // Fecha antigua - deshabilitada
+  const today = new Date().toISOString().split('T')[0]; // Usar fecha actual real
   
   const currentTechnician = mobileState.currentTechnician || 'Juan Carlos Pérez';
+
+  // DEBUG: Log para verificar órdenes totales
+  useEffect(() => {
+    console.log('📱 [MOBILE DEBUG] Total de órdenes en workOrders:', workOrders.length);
+    console.log('📱 [MOBILE DEBUG] Técnico actual:', currentTechnician);
+  }, [workOrders, currentTechnician]);
 
   // Separar OTs pendientes y completadas
   const pendingOTs = workOrders
@@ -155,6 +466,15 @@ function MobileApp() {
       calificacionServicio: ot.calificacionServicio,
       reporteGenerado: ot.reporteGenerado
     }));
+
+  // DEBUG: Log para verificar órdenes después de filtrar
+  useEffect(() => {
+    console.log('📱 [MOBILE DEBUG] Órdenes pendientes filtradas:', pendingOTs.length);
+    console.log('📱 [MOBILE DEBUG] Órdenes completadas filtradas:', completedOTs.length);
+    if (pendingOTs.length > 0) {
+      console.log('📱 [MOBILE DEBUG] Primeras 3 órdenes pendientes:', pendingOTs.slice(0, 3).map(ot => ({ id: ot.id, client: ot.client, status: ot.status })));
+    }
+  }, [pendingOTs, completedOTs]);
 
   // Establecer el técnico actual al montar el componente
   useEffect(() => {
@@ -546,6 +866,56 @@ function MobileApp() {
             </CardContent>
           </Card>
 
+          {/* Resumen Ejecutivo */}
+          <Card sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                Resumen Ejecutivo
+              </Typography>
+              <Typography variant="body2" paragraph>
+                {ot.resumenEjecutivo || ot.observaciones || 'Trabajo completado satisfactoriamente según checklist programado.'}
+              </Typography>
+              
+              {/* Mostrar recomendaciones si existen */}
+              {ot.recomendaciones && ot.recomendaciones.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Recomendaciones:
+                  </Typography>
+                  <List dense>
+                    {ot.recomendaciones.map((rec, index) => (
+                      <ListItem key={index} sx={{ pl: 0 }}>
+                        <ListItemIcon sx={{ minWidth: 32 }}>
+                          <Warning color="warning" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={rec}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+
+              {/* Próximo mantenimiento */}
+              {ot.proximoMantenimiento && (
+                <Box sx={{ mt: 2, p: 1.5, bgcolor: 'info.light', borderRadius: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    Próximo Mantenimiento Programado
+                  </Typography>
+                  <Typography variant="body1" fontWeight="bold">
+                    {new Date(ot.proximoMantenimiento).toLocaleDateString('es-ES', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Checklist completado */}
           {ot.checklist && (
             <Card sx={{ mb: 2 }}>
@@ -555,18 +925,54 @@ function MobileApp() {
                 </Typography>
                 <List dense>
                   {ot.checklist.items?.map((item, index) => (
-                    <ListItem key={index}>
-                      <ListItemIcon>
-                        {item.completado ? (
-                          <CheckCircle color="success" />
-                        ) : (
-                          <RadioButtonChecked color="disabled" />
-                        )}
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={item.descripcion}
-                        secondary={item.observaciones}
-                      />
+                    <ListItem key={index} sx={{ alignItems: 'flex-start', flexDirection: 'column', py: 1.5 }}>
+                      <Box sx={{ display: 'flex', width: '100%', alignItems: 'flex-start' }}>
+                        <ListItemIcon sx={{ minWidth: 40 }}>
+                          {item.completado ? (
+                            <CheckCircle color="success" />
+                          ) : (
+                            <RadioButtonChecked color="disabled" />
+                          )}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="body2" fontWeight="medium">
+                                {item.descripcion}
+                              </Typography>
+                              {item.estado && (
+                                <Chip 
+                                  label={item.estado} 
+                                  size="small" 
+                                  color={item.estado === 'OK' ? 'success' : 'warning'}
+                                  sx={{ ml: 1 }}
+                                />
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <Box sx={{ mt: 0.5 }}>
+                              {/* Mostrar medición si existe */}
+                              {item.valor && (
+                                <Typography variant="body2" color="primary" fontWeight="bold" sx={{ mb: 0.5 }}>
+                                  📊 Medición: {item.valor}
+                                  {item.rangoMinimo !== undefined && item.rangoMaximo !== undefined && (
+                                    <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                      (Rango: {item.rangoMinimo} - {item.rangoMaximo} {item.unidad || ''})
+                                    </Typography>
+                                  )}
+                                </Typography>
+                              )}
+                              {/* Observaciones */}
+                              {item.observaciones && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {item.observaciones}
+                                </Typography>
+                              )}
+                            </Box>
+                          }
+                        />
+                      </Box>
                     </ListItem>
                   ))}
                 </List>
@@ -616,7 +1022,7 @@ function MobileApp() {
                 <Typography variant="h6" gutterBottom>
                   Evidencias
                 </Typography>
-                <Box sx={{ display: 'flex', gap: 2 }}>
+                <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                   {ot.multimedia.fotos?.length > 0 && (
                     <Chip
                       icon={<CameraAlt />}
@@ -639,6 +1045,56 @@ function MobileApp() {
                     />
                   )}
                 </Box>
+                {/* Mostrar las fotos */}
+                {ot.multimedia.fotos?.length > 0 && (
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Fotografías:
+                    </Typography>
+                    <Grid container spacing={2}>
+                      {ot.multimedia.fotos.map((foto, index) => (
+                        <Grid item xs={6} key={index}>
+                          <Box
+                            sx={{
+                              position: 'relative',
+                              borderRadius: 1,
+                              overflow: 'hidden',
+                              border: '1px solid #e0e0e0',
+                            }}
+                          >
+                            <img
+                              src={getImageUrl(foto, index)}
+                              alt={foto.descripcion || `Foto ${index + 1}`}
+                              style={{
+                                width: '100%',
+                                height: 'auto',
+                                display: 'block',
+                              }}
+                              onError={(e) => {
+                                // Si falla, intentar con placeholder genérico
+                                e.target.src = `https://placehold.co/600x400/cccccc/333333?text=Error+cargando+imagen`;
+                              }}
+                            />
+                            {foto.descripcion && (
+                              <Typography
+                                variant="caption"
+                                sx={{
+                                  display: 'block',
+                                  p: 0.5,
+                                  bgcolor: 'rgba(0,0,0,0.6)',
+                                  color: 'white',
+                                  textAlign: 'center',
+                                }}
+                              >
+                                {foto.descripcion}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+                )}
               </CardContent>
             </Card>
           )}
@@ -719,10 +1175,7 @@ function MobileApp() {
               variant="contained"
               fullWidth
               startIcon={<Download />}
-              onClick={() => {
-                // Aquí puedes implementar la descarga del PDF
-                alert('Descargando reporte en PDF...');
-              }}
+              onClick={() => handleDownloadPDF(selectedOT)}
             >
               Descargar PDF
             </Button>
@@ -874,6 +1327,7 @@ function MobileApp() {
                 setCurrentView('home');
                 setChecklistData([]);
                 setPhotosTaken(0);
+                setUploadedPhotos([]); // Resetear fotos subidas
                 setClientSignature(null);
                 setChecklistStep(0);
                 setShowSummary(false);
@@ -1121,9 +1575,26 @@ function MobileApp() {
                                   type="file" 
                                   multiple 
                                   accept="image/*" 
-                                  onChange={(e)=>{ 
-                                    const count = e.target.files?.length || 0; 
-                                    setPhotosTaken(prev=>prev+count); 
+                                  onChange={async (e) => { 
+                                    const files = Array.from(e.target.files || []);
+                                    const count = files.length;
+                                    
+                                    // Convertir archivos a base64
+                                    const photoPromises = files.map(async (file, idx) => {
+                                      const base64 = await fileToBase64(file);
+                                      return {
+                                        id: `foto-${Date.now()}-${idx}`,
+                                        nombre: file.name,
+                                        url: base64, // Guardar imagen en base64
+                                        fecha: new Date().toISOString(),
+                                        descripcion: `Evidencia fotográfica ${uploadedPhotos.length + idx + 1}`,
+                                        tipo: 'evidencia'
+                                      };
+                                    });
+                                    
+                                    const newPhotos = await Promise.all(photoPromises);
+                                    setUploadedPhotos(prev => [...prev, ...newPhotos]);
+                                    setPhotosTaken(prev => prev + count);
                                   }} 
                                 />
                               </Button>
@@ -1168,9 +1639,21 @@ function MobileApp() {
                 hidden 
                 type="file" 
                 accept="image/*" 
-                onChange={(e)=>{ 
-                  const count = e.target.files?.length?1:0; 
-                  setPhotosTaken(prev=>prev+count); 
+                onChange={async (e) => { 
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const base64 = await fileToBase64(file);
+                    const newPhoto = {
+                      id: `foto-${Date.now()}`,
+                      nombre: file.name,
+                      url: base64, // Guardar imagen en base64
+                      fecha: new Date().toISOString(),
+                      descripcion: `Evidencia fotográfica ${uploadedPhotos.length + 1}`,
+                      tipo: 'evidencia'
+                    };
+                    setUploadedPhotos(prev => [...prev, newPhoto]);
+                    setPhotosTaken(prev => prev + 1);
+                  }
                 }} 
               />
             </Button>
@@ -1259,12 +1742,14 @@ function MobileApp() {
                 tiempoReal: 2.5,
                 observaciones: 'Mantenimiento completado según checklist',
                 multimedia: {
-                  fotos: Array.from({length: photosTaken}, (_, i) => ({
-                    id: `foto-${i + 1}`,
-                    nombre: `evidencia_${i + 1}.jpg`,
-                    url: `/uploads/ot-${selectedOT?.id}/foto_${i + 1}.jpg`,
-                    fecha: new Date().toISOString()
-                  })),
+                  fotos: uploadedPhotos.length > 0 
+                    ? uploadedPhotos // Usar fotos reales con base64
+                    : Array.from({length: photosTaken}, (_, i) => ({ // Fallback si no hay fotos reales
+                        id: `foto-${i + 1}`,
+                        nombre: `evidencia_${i + 1}.jpg`,
+                        url: `/uploads/ot-${selectedOT?.id}/foto_${i + 1}.jpg`,
+                        fecha: new Date().toISOString()
+                      })),
                   videos: [],
                   audios: [],
                   documentos: []
@@ -1436,3 +1921,4 @@ function MobileApp() {
 }
 
 export default MobileApp;
+

@@ -14,9 +14,19 @@ import {
 } from '../data/globalMockData';
 import { updatedWorkOrdersData } from '../data/updatedWorkOrdersFixed';
 
+// Log para debug - ver cuántas órdenes se están cargando
+console.log('🔧 [MEKANOS DEBUG] Cargando órdenes de trabajo:', updatedWorkOrdersData.length);
+console.log('🔧 [MEKANOS DEBUG] Estados de órdenes:', 
+  updatedWorkOrdersData.reduce((acc, wo) => {
+    acc[wo.estado] = (acc[wo.estado] || 0) + 1;
+    return acc;
+  }, {})
+);
+
 const useGlobalStore = create(
   devtools(
-    persist(
+    // PERSISTENCIA DESHABILITADA TEMPORALMENTE PARA DEBUG
+    // persist(
       (set, get) => ({
         // ==================== ESTADO INICIAL ====================
         employees: employeesData,
@@ -65,6 +75,16 @@ const useGlobalStore = create(
         },
 
         // ==================== ACCIONES DE ÓRDENES DE TRABAJO ====================
+
+        // Resetea el store y borra el almacenamiento persistente (para desarrollo)
+        resetStore: () => {
+          if (window && window.localStorage) {
+            // Borra el storage de Zustand (nombre por defecto: 'zustand')
+            window.localStorage.removeItem('zustand');
+            // Recarga la página para forzar el estado inicial
+            window.location.reload();
+          }
+        },
         // Acción para cambiar vista móvil/escritorio
         setIsMobileView: (value) => {
           set(() => ({ isMobileView: !!value }));
@@ -456,12 +476,15 @@ const useGlobalStore = create(
             }
           });
         }
-      }),
-      {
-        name: 'mekanos-global-store',
-        version: 1,
-      }
-    ),
+      })
+      // PERSISTENCIA DESHABILITADA - descomentar las líneas abajo para reactivarla
+      // ,
+      // {
+      //   name: 'mekanos-global-store',
+      //   version: 1,
+      // }
+    // )
+    ,
     {
       name: 'Mekanos Global Store'
     }
