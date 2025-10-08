@@ -120,6 +120,7 @@ function Dashboard() {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 1000);
   };
+  console.log('PROBANDOOOOOOO')
 
   const KPICard = ({ kpi }) => (
     <Card sx={{ height: '100%', position: 'relative', overflow: 'visible' }}>

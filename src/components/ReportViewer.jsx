@@ -1,5 +1,7 @@
 // src/components/ReportViewer.jsx
 import React, { useState } from 'react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import {
   Box,
   Paper,
@@ -46,8 +48,78 @@ import {
 } from '@mui/icons-material';
 
 const ReportViewer = ({ open, onClose, report, type = 'report' }) => {
+
   const [activeTab, setActiveTab] = useState(0);
   const [imagePreview, setImagePreview] = useState(null);
+
+  // Función para descargar el PDF con imágenes
+  const handleDownloadPDF = async () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    let y = 15;
+    doc.setFontSize(18);
+    doc.text(report.titulo || `Reporte de Trabajo #${report.id}` || 'Reporte', 10, y);
+    y += 10;
+    doc.setFontSize(12);
+    doc.text(`Cliente: ${report.cliente || report.client_name || ''}`, 10, y);
+    y += 7;
+    doc.text(`Activo: ${report.activoNombre || report.asset_name || ''}`, 10, y);
+    y += 7;
+    doc.text(`Técnico: ${report.tecnicoAsignado || report.technician || ''}`, 10, y);
+    y += 7;
+    doc.text(`Fecha: ${new Date(report.fechaFinalizacion || report.date_generated || report.fechaGeneracion || Date.now()).toLocaleString('es-ES')}`, 10, y);
+    y += 10;
+    doc.setFontSize(14);
+    doc.text('Resumen:', 10, y);
+    y += 7;
+    doc.setFontSize(11);
+    doc.text(report.resumenEjecutivo || report.contenido || report.description || 'Sin resumen.', 10, y, { maxWidth: 180 });
+    y += 15;
+
+    // Fotos evidencias
+    const fotos = (report.multimedia && report.multimedia.fotos) ? report.multimedia.fotos : [];
+    if (fotos.length > 0) {
+      doc.setFontSize(13);
+      doc.text('Evidencias fotográficas:', 10, y);
+      y += 7;
+      for (let i = 0; i < fotos.length; i++) {
+        const foto = fotos[i];
+        try {
+          // Cargar imagen como base64
+          const imgData = await getImageBase64(foto.url);
+          if (y > 260) { doc.addPage(); y = 15; }
+          doc.addImage(imgData, 'JPEG', 10, y, 60, 45);
+          doc.setFontSize(10);
+          doc.text(foto.descripcion || `Foto ${i + 1}`, 75, y + 5);
+          y += 50;
+        } catch (e) {
+          doc.setFontSize(10);
+          doc.text(`(No se pudo cargar la imagen: ${foto.descripcion || foto.url})`, 10, y);
+          y += 7;
+        }
+      }
+    }
+
+    // Guardar PDF
+    doc.save(`Reporte_${report.id || 'mantenimiento'}.pdf`);
+  };
+
+  // Utilidad para convertir imagen a base64
+  const getImageBase64 = (url) => {
+    return new Promise((resolve, reject) => {
+      const img = new window.Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = function () {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg'));
+      };
+      img.onerror = function (err) { reject(err); };
+      img.src = url;
+    });
+  };
 
   if (!report) return null;
 
@@ -410,7 +482,7 @@ const ReportViewer = ({ open, onClose, report, type = 'report' }) => {
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>Cerrar</Button>
-          <Button variant="contained" startIcon={<Download />}>
+          <Button variant="contained" startIcon={<Download />} onClick={handleDownloadPDF}>
             Exportar PDF
           </Button>
         </DialogActions>
